@@ -1,0 +1,149 @@
+Tôi chỉ can bạn xem phần void main (chương trình chính) đã tối giản chưa, nếu thấy chưa bạn hãy sửa lại cho tôi, nhưng hay đưa từng đoạn code một để tránh tình trạng bị gián đoạn khi bạn đưa thông tin cho tôi
+#use fast_io(all)
+#define DO_AM		PIN_A2
+#define Motor_Pin1	PIN_D4
+#define Motor_Pin2	PIN_D5
+
+#define Rain_Pin	PIN_A4
+#define REM1		PIN_C1
+#define REM2		PIN_C2
+#define CTHT1		PIN_D0
+#define CTHT2		PIN_C3
+
+#BIT Data_Pin = 0x01.0	//Chan A0 noi voi chan output cua DHT11
+#BIT Data_Pin_Direction = 0x81.0 // Dieu huong cho chan A0
+
+#BIT Fan1_Pin = 0x10.0 // Chan B4 noi voi quat 1
+#BIT Fan2_Pin = 0x20.0 // Chan B5 noi voi quat 2
+#BIT Fan1_Direction = 0x90.0 // Dieu huong cho chan B4
+#BIT Fan2_Direction = 0xA0.0 // Dieu huong cho chan B5
+
+short Time_out;
+unsigned int8 T_byte1, T_byte2, RH_byte1, RH_byte2, CheckSum	;
+
+//khoi dong qua trinh doc data tu DHT11
+void start_signal()
+{
+	Data_Pin_Direction = 0;
+	Data_Pin = 0;//cho chan nhan du lieu xuong muc 0
+	delay_ms(25);//phai duy tri it nhat 18ms
+	Data_Pin = 1;//cho chan nhan du lieu len muc 1
+	delay_us(30);//duy tri trong khoang 20-40us
+	Data_Pin_Direction = 1;
+}
+
+short check_response()
+{
+	delay_us(10);
+	if(!Data_Pin){		//doc kiem tra neu chan Data_Pin o muc 0
+		delay_us(80);	//phan hoi la dung neu tin hieu duy tri 80us
+		
+		//doc kiem tra neu chan Data_Pin o muc 1
+		//Neu phan hoi la dung thi gia tri tra ve la 1
+		if(Data_Pin){delay_us(80); return 1;}
+	}
+}
+
+unsigned int8 Read_Data()
+{
+	unsigned int i, k, _data = 0;
+	//bien "k" duo su dung de dem thoi gian tin hieu o muc 1
+	if(Time_out) break;
+	for(i = 0; i < 8; i++)
+	{
+		k = 0;
+		while(!Data_Pin)
+		{
+			k++;
+			if(k > 100) {Time_out = 1; break;}// neu tin hieu tra ve o muc 0 hon 100us thi thoat
+			delay_us(1);
+		}
+		delay_us(30);
+		//sau 30us se kiem tra tin hieu da len muc 1 hay chua.
+		//neu sau 30s ma tin hieu o muc 0 thi du lieu goi ve VDK se o muc 0
+		if(!Data_Pin) bit_clear(_data, (7 - i));
+		else
+		{
+			bit_set(_data, (7 - i)); // nguoc lai du lieu se la 1
+			while(Data_Pin)
+			{
+				k++;
+				if(k > 100) { Time_out = 1; break;}//neu tin hieu tra ve muc 0 hon 100us thi thoat
+				delay_us(1);
+			}
+		}
+	}
+	return _data;
+}
+
+
+void main()
+{	
+	set_tris_a(0xFF);
+	set_tris_d(0x0F);
+	
+  	while(TRUE)
+  	{
+		if(input(DO_AM)) // Neu do am duoi nguong cho phep
+		{
+			output_high(Motor_Pin1); // Phun suong
+			output_low(Motor_Pin2); 
+		}
+		else // Neu do am dat nguong cho phep
+		{
+			output_high(Motor_Pin2); // Dung phun suong
+			output_low(Motor_Pin1); 
+		}
+      		delay_ms(500);
+		
+		if(input(Rain_Pin)) // Neu co mua
+		{
+         		output_high(REM1); // Keo rem vao
+         		output_low(REM2);
+         		if(input(CTHT1))	// Cham CTHT1 thi dung keo rem
+         		{
+         			output_low(REM1);
+         		}
+      		}
+      		else // Neu không co mua
+      		{
+         		output_high(REM2); // Keo rem ra
+         		output_low(REM1);
+         		if(input(CTHT2))	//Cham CTHT1 thi dung keo rem
+         		{
+         			output_low(REM2);
+         		}
+      		}
+      		delay_ms(500); 
+		
+		delay_ms(1000);
+		Time_out = 0;
+		Start_signal();//truyen tin hieu bat dau cho DHT11
+		
+		//kiem tra da co phan hoi tu cam bien hay chua
+		if(check_response())
+		{
+			RH_byte1 = Read_Data();//phan nguyen cua do am
+			RH_byte2 = Read_Data();//phan thap phan cua do am
+			T_byte1	= Read_Data();//phan nguyen cua nhiet do
+			T_byte2	= Read_Data();//phan thap phan cua nhiet do
+			Checksum = Read_Data();//doc gia tri checksum
+			
+			//tinh toan gia tri do am va nhiet do dua tren cac byte doc duoc
+			float temperature = T_byte1 + ((float)T_byte2 / 10);
+      			float humidity = RH_byte1 + ((float)RH_byte2 / 10);
+      	
+      			//dieu khien quat dua tren gia tri nhiet do va do am
+			if (temperature >= 30 && humidity >= 60)
+        		{
+            			Fan1_Pin = 1; // Bat quat 1
+            			Fan2_Pin = 1; // Bat quat 2
+        		}
+        		else
+        		{
+            			Fan1_Pin = 0; // Tat quat 1
+            			Fan2_Pin = 0; // Tat quat 2
+        		}
+		}
+   	}
+}
